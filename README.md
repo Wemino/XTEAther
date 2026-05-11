@@ -4,7 +4,7 @@ A preservation tool for the Steam release of Dead Space 2.
 
 ## Disclaimer
 
-The steam release of Dead Space 2 uses TAGES Solidshield, a legacy DRM that limits the game to five authorized PCs. If you no longer have access to those machines to deauthorize them, any attempt to activate on a new machine fails with "The activation limit has been exceeded," and EA Support has indicated they can no longer reset this limit.
+The Steam release of Dead Space 2 uses TAGES Solidshield, a legacy DRM that limits the game to five authorized PCs. If you no longer have access to those machines to deauthorize them, any attempt to activate on a new machine fails with "The activation limit has been exceeded," and EA Support has indicated they can no longer reset this limit.
  
 XTEAther helps owners of the Steam release play the game they paid for when they're locked out. The user still needs to own the game on Steam for any of this to be useful.
 
@@ -27,9 +27,9 @@ The Steam build only.
 
 
 ```
-XTEAther.exe path\to\DeadSpace2.exe
+XTEAther.exe path\to\deadspace2.exe
 ```
 
 Download: [version requiring .NET 10](https://github.com/Wemino/XTEAther/releases/latest/download/XTEAther.zip) or [standalone version](https://github.com/Wemino/XTEAther/releases/latest/download/XTEAther-standalone.zip).
 
-The original file is renamed to `DeadSpace2.exe.bak` and a clean executable is written in its place.
+The original file is renamed to `deadspace2.exe.bak` and a clean executable is written in its place.
