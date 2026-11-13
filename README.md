@@ -23,13 +23,13 @@ The result is a clean executable that runs without ever calling into the DRM or 
  
 The Steam build only.
 
-## Usage
-
-
-```
-XTEAther.exe path\to\deadspace2.exe
-```
-
-Download: [version requiring .NET 10](https://github.com/Wemino/XTEAther/releases/latest/download/XTEAther.zip) or [standalone version](https://github.com/Wemino/XTEAther/releases/latest/download/XTEAther-standalone.zip).
-
-The original file is renamed to `deadspace2.exe.bak` and a clean executable is written in its place.
+## How to use it
+ 
+**XTEAther has no window. Double-clicking it does nothing useful. You have to drop your game file onto it.**
+ 
+1. Download and unzip: [standalone version](https://github.com/Wemino/XTEAther/releases/latest/download/XTEAther-standalone.zip) (easiest) or the [.NET 10 version](https://github.com/Wemino/XTEAther/releases/latest/download/XTEAther.zip).
+2. In Steam: right-click Dead Space 2 > **Manage** > **Browse local files**.
+3. **Drag `deadspace2.exe` onto `XTEAther.exe`.**
+4. Wait for "Wrote output to...", then press Enter.
+5. Launch the game.
+That's it. Your original is saved as `deadspace2.exe.bak`.
