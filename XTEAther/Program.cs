@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Globalization;
 using System.Resources;
 using System.Runtime.InteropServices;
@@ -79,6 +79,15 @@ namespace XTEAther
 
             Console.WriteLine("Restoring PE header...");
             RestoreHeader(raw);
+
+            Console.WriteLine("Padding expected file size...");
+            PadToExpectedFileSize(ref raw);
+
+            Console.WriteLine("Restoring original size of image...");
+            RestoreOriginalSizeOfImage(raw, backup);
+
+            Console.WriteLine("Restoring original timestamp...");
+            RestoreOriginalTimestamp(raw, backup);
 
             File.WriteAllBytes(output, raw);
             Console.WriteLine();
@@ -231,6 +240,144 @@ namespace XTEAther
             Write32(raw, dataDirectoryOffset + 1 * 8 + 4, (int)ImportDirectorySize);          // Import size
             Write32(raw, dataDirectoryOffset + 5 * 8 + 0, (int)RelocationDirectoryRva);       // Base relocation RVA
             Write32(raw, dataDirectoryOffset + 5 * 8 + 4, (int)RelocationDirectorySize);      // Base relocation size
+        }
+
+        #endregion
+
+        #region Phase 5 – Pad output file
+
+        private static void PadToExpectedFileSize(ref byte[] raw)
+        {
+            if ((uint)raw.Length < ExpectedFileSize)
+            {
+                Array.Resize(ref raw, (int)ExpectedFileSize);
+            }
+        }
+
+        #endregion
+
+        #region Phase 6 – Restore original SizeOfImage
+
+        private static void RestoreOriginalSizeOfImage(byte[] processed, string backupPath)
+        {
+            byte[] original = File.ReadAllBytes(backupPath);
+
+            static (int optionalHeaderOffset, int sectionTableOffset, int sectionCount) GetPeLayout(byte[] executable, string description)
+            {
+                if (executable.Length < 0x40 || executable[0] != 'M' || executable[1] != 'Z')
+                {
+                    throw new InvalidDataException($"{description} is not a valid PE executable.");
+                }
+
+                int peOffset = ToInt32(executable, 0x3C);
+                if (peOffset < 0 || (long)peOffset + 24 > executable.Length)
+                {
+                    throw new InvalidDataException($"{description} has an out-of-bounds PE header.");
+                }
+
+                if (executable[peOffset] != 'P' || executable[peOffset + 1] != 'E'
+                    || executable[peOffset + 2] != 0 || executable[peOffset + 3] != 0)
+                {
+                    throw new InvalidDataException($"{description} has an invalid PE signature.");
+                }
+
+                int optionalHeaderSize = ToInt16(executable, peOffset + 20);
+                int optionalHeaderOffset = peOffset + 24;
+                if (optionalHeaderSize < 60 || (long)optionalHeaderOffset + optionalHeaderSize > executable.Length)
+                {
+                    throw new InvalidDataException($"{description} has an invalid optional header.");
+                }
+
+                int sectionTableOffset = optionalHeaderOffset + optionalHeaderSize;
+                int sectionCount = ToInt16(executable, peOffset + 6);
+                if (sectionCount < 0 || (long)sectionTableOffset + (long)sectionCount * 40 > executable.Length)
+                {
+                    throw new InvalidDataException($"{description} has an out-of-bounds section table.");
+                }
+
+                return (optionalHeaderOffset, sectionTableOffset, sectionCount);
+            }
+
+            static uint GetMaxAlignedSectionEnd(byte[] executable, int sectionTableOffset, int sectionCount, uint sectionAlignment, string description)
+            {
+                uint maxEnd = 0;
+                for (int i = 0; i < sectionCount; i++)
+                {
+                    int sectionHeaderOffset = sectionTableOffset + i * 40;
+                    uint virtualSize = (uint)ToInt32(executable, sectionHeaderOffset + 8);
+                    uint virtualAddress = (uint)ToInt32(executable, sectionHeaderOffset + 12);
+                    uint rawSize = (uint)ToInt32(executable, sectionHeaderOffset + 16);
+                    ulong end = (ulong)virtualAddress + Math.Max(virtualSize, rawSize);
+                    ulong alignedEnd = ((end + sectionAlignment - 1) / sectionAlignment) * sectionAlignment;
+                    if (alignedEnd > uint.MaxValue)
+                    {
+                        throw new InvalidDataException($"{description} has a section extending beyond the supported image size.");
+                    }
+
+                    if (alignedEnd > maxEnd) maxEnd = (uint)alignedEnd;
+                }
+
+                return maxEnd;
+            }
+
+            var originalLayout = GetPeLayout(original, "Backup executable");
+            var processedLayout = GetPeLayout(processed, "Processed executable");
+            uint originalSectionAlignment = (uint)ToInt32(original, originalLayout.optionalHeaderOffset + 32);
+            uint processedSectionAlignment = (uint)ToInt32(processed, processedLayout.optionalHeaderOffset + 32);
+            if (originalSectionAlignment == 0 || originalSectionAlignment != processedSectionAlignment)
+            {
+                throw new InvalidDataException("Backup and processed executables have incompatible section alignments.");
+            }
+
+            uint originalSizeOfImage = (uint)ToInt32(original, originalLayout.optionalHeaderOffset + 56);
+            if (originalSizeOfImage == 0 || originalSizeOfImage % originalSectionAlignment != 0)
+            {
+                throw new InvalidDataException("Backup executable has an invalid SizeOfImage value.");
+            }
+
+            uint originalMaxEnd = GetMaxAlignedSectionEnd(original, originalLayout.sectionTableOffset, originalLayout.sectionCount, originalSectionAlignment, "Backup executable");
+            uint processedMaxEnd = GetMaxAlignedSectionEnd(processed, processedLayout.sectionTableOffset, processedLayout.sectionCount, processedSectionAlignment, "Processed executable");
+            if (originalSizeOfImage < originalMaxEnd || originalSizeOfImage < processedMaxEnd)
+            {
+                throw new InvalidDataException("Backup SizeOfImage does not cover the executable's section ranges.");
+            }
+
+            Write32(processed, processedLayout.optionalHeaderOffset + 56, (int)originalSizeOfImage);
+        }
+
+        #endregion
+
+        #region Phase 7 – Restore original timestamp
+
+        private static void RestoreOriginalTimestamp(byte[] processed, string backupPath)
+        {
+            byte[] original = File.ReadAllBytes(backupPath);
+
+            static int TimestampOffset(byte[] executable, string description)
+            {
+                if (executable.Length < 0x40 || executable[0] != 'M' || executable[1] != 'Z')
+                {
+                    throw new InvalidDataException($"{description} is not a valid PE executable.");
+                }
+
+                int peOffset = ToInt32(executable, 0x3C);
+                if (peOffset < 0 || (long)peOffset + 12 > executable.Length)
+                {
+                    throw new InvalidDataException($"{description} has an out-of-bounds PE header.");
+                }
+
+                if (executable[peOffset] != 'P' || executable[peOffset + 1] != 'E'
+                    || executable[peOffset + 2] != 0 || executable[peOffset + 3] != 0)
+                {
+                    throw new InvalidDataException($"{description} has an invalid PE signature.");
+                }
+
+                return peOffset + 8;
+            }
+
+            int originalTimestampOffset = TimestampOffset(original, "Backup executable");
+            int processedTimestampOffset = TimestampOffset(processed, "Processed executable");
+            Array.Copy(original, originalTimestampOffset, processed, processedTimestampOffset, 4);
         }
 
         #endregion
